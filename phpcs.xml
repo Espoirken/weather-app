@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<ruleset name="Weather App">
+    <description>PSR-12 for application code</description>
+
+    <file>app</file>
+    <file>routes</file>
+    <file>tests</file>
+    <file>lang</file>
+
+    <exclude-pattern>*/vendor/*</exclude-pattern>
+    <exclude-pattern>*/node_modules/*</exclude-pattern>
+    <exclude-pattern>*/storage/*</exclude-pattern>
+    <exclude-pattern>*/bootstrap/cache/*</exclude-pattern>
+    <exclude-pattern>*/public/*</exclude-pattern>
+    <exclude-pattern>*/resources/*</exclude-pattern>
+    <exclude-pattern>*/database/migrations/*</exclude-pattern>
+    <exclude-pattern>*/database/seeders/*</exclude-pattern>
+
+    <arg name="basepath" value="."/>
+    <arg name="colors"/>
+    <arg name="extensions" value="php"/>
+    <arg value="p"/>
+
+    <rule ref="PSR12"/>
+
+    <rule ref="Generic.Files.LineLength">
+        <properties>
+            <property name="lineLimit" value="120"/>
+            <property name="absoluteLineLimit" value="120"/>
+        </properties>
+        <type>error</type>
+    </rule>
+
+    <rule ref="PSR1.Methods.CamelCapsMethodName">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+</ruleset>

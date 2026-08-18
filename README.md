@@ -1,58 +1,88 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Weather App
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A Laravel API that returns current weather for a city from [OpenWeatherMap](https://openweathermap.org/current). There are two routes: one that always hits the provider, and one that caches the result for 10 minutes.
 
-## About Laravel
+## Endpoints
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+| Method | URL | Behavior |
+|---|---|---|
+| GET | `/api/weather/{city}` | Always fetches from OpenWeatherMap. `source` is `external`. |
+| GET | `/api/weather/{city}/cached` | Returns a cached payload when one exists (10 minutes). `source` is `cache` on a hit, `external` on a miss. |
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+Example (`GET /api/weather/London`):
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
-
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
-
-```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+```json
+{
+  "city": "London",
+  "country": "GB",
+  "temperature": 18.5,
+  "feels_like": 17.2,
+  "description": "scattered clouds",
+  "humidity": 72,
+  "wind_speed": 4.12,
+  "timestamp": "2026-08-18T10:00:00+00:00",
+  "source": "external"
+}
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+`temperature` and `feels_like` are Celsius. `wind_speed` is meters per second. `humidity` is a percent. `timestamp` is when this app last fetched the data, not a forecast time. `country`, `feels_like`, `humidity`, and `wind_speed` are `null` when the provider omits them.
 
-## Contributing
+### Errors
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+| Status | When | Shape |
+|---|---|---|
+| 422 | `{city}` is empty or not letters / spaces / hyphens / apostrophes / periods | Laravel validation (`message` + `errors.city`) |
+| 404 | OpenWeatherMap does not know the city | `{"error": "..."}` |
+| 502 | Timeout, provider error, unexpected payload, or blank API key | `{"error": "..."}` |
 
-## Code of Conduct
+Provider messages come from `lang/en/errors.php`.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## Run
 
-## Security Vulnerabilities
+PHP 8.3+ and Composer.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```bash
+composer install
+cp .env.example .env
+php artisan key:generate
+```
 
-## License
+Add a free OpenWeatherMap key to `.env` ([sign up](https://home.openweathermap.org/users/sign_up)):
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+```
+OPENWEATHERMAP_API_KEY=your_real_key_here
+```
+
+Then:
+
+```bash
+php artisan serve
+```
+
+```bash
+curl http://localhost:8000/api/weather/London
+curl http://localhost:8000/api/weather/London/cached
+```
+
+The second `/cached` call within 10 minutes should return the same `timestamp` with `"source": "cache"`.
+
+## Tests
+
+```bash
+php artisan test
+```
+
+The suite fakes OpenWeatherMap with `Http::fake()`, so it does not need a real key or network. `phpunit.xml` sets `OPENWEATHERMAP_API_KEY=test-api-key`.
+
+- Feature tests (`tests/Feature/WeatherControllerTest.php`) hit the HTTP API: statuses, JSON shape, validation, and `/cached`.
+- Unit tests (`tests/Unit/WeatherServiceTest.php`) call `WeatherService` directly: mapping, typed exceptions (including an unexpected 200 payload), and cache source labels.
+
+## Approach
+
+Request flow: **Form Request → controller → service → API Resource**.
+
+- `WeatherRequest` trims and validates `{city}` before the controller runs.
+- `WeatherController` only chooses `fetch()` or `fetchCached()` and returns `WeatherResource`.
+- `WeatherService` calls OpenWeatherMap, maps HTTP/connection failures to `CityNotFoundException` or `WeatherServiceException`, and returns a `WeatherData` object. `fetch()` always sets `source` to `external`. `fetchCached()` uses `Cache::remember()` (key `weather:{city}`, 10 minutes) and returns `fromCache()` on a hit so `source` is `cache`.
+- `WeatherResource` maps `WeatherData` to JSON. Wrapping is off, so the payload is flat rather than `{ "data": { ... } }`.
+- Exceptions are rendered in `bootstrap/app.php` (404 / 502). The controller does not catch them.
