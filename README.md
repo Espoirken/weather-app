@@ -47,11 +47,7 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-Add a free OpenWeatherMap key to `.env` ([sign up](https://home.openweathermap.org/users/sign_up)):
-
-```
-OPENWEATHERMAP_API_KEY=your_real_key_here
-```
+`.env.example` already includes an OpenWeatherMap API key, so `cp .env.example .env` is enough to run the app. You can replace `OPENWEATHERMAP_API_KEY` in `.env` with your own free key if you prefer ([sign up](https://home.openweathermap.org/users/sign_up)).
 
 Then:
 
